@@ -8,12 +8,14 @@
 #include <errno.h>
 
 int main(int argc, char *argv[]) {
-    if (argc < 2) { fprintf(stderr, "usage: %s <crtc_id>\n", argv[0]); return 1; }
+    if (argc < 3) { fprintf(stderr, "usage: %s <card_name> <crtc_id>\n", argv[0]); return 1; }
 
-    int fd = open("/dev/dri/card2", O_RDWR);
+    char path[64];
+    snprintf(path, sizeof(path), "/dev/dri/%s", argv[1]);
+    int fd = open(path, O_RDWR);
     if (fd < 0) { perror("open"); return 1; }
 
-    drmModeCrtc *crtc = drmModeGetCrtc(fd, atoi(argv[1]));
+    drmModeCrtc *crtc = drmModeGetCrtc(fd, atoi(argv[2]));
     if (!crtc) { fprintf(stderr, "GetCrtc failed: %s\n", strerror(errno)); return 1; }
     printf("fb_id=%d size=%dx%d\n", crtc->buffer_id, crtc->width, crtc->height);
 
