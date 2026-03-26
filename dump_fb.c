@@ -19,22 +19,25 @@ int main(int argc, char *argv[]) {
     if (!crtc) { fprintf(stderr, "GetCrtc failed: %s\n", strerror(errno)); return 1; }
     printf("fb_id=%d size=%dx%d\n", crtc->buffer_id, crtc->width, crtc->height);
 
-    drmModeFB *fb = drmModeGetFB(fd, crtc->buffer_id);
-    if (!fb) { fprintf(stderr, "GetFB failed: %s\n", strerror(errno)); return 1; }
-    printf("fb: %dx%d pitch=%d handle=%d\n", fb->width, fb->height, fb->pitch, fb->handle);
+    drmModeFB2 *fb = drmModeGetFB2(fd, crtc->buffer_id);
+    if (!fb) { fprintf(stderr, "GetFB2 failed: %s\n", strerror(errno)); return 1; }
+    printf("fb: %dx%d pitch=%d handle=%d fmt=%c%c%c%c\n",
+           fb->width, fb->height, fb->pitches[0], fb->handles[0],
+           (fb->pixel_format >>  0) & 0xff, (fb->pixel_format >>  8) & 0xff,
+           (fb->pixel_format >> 16) & 0xff, (fb->pixel_format >> 24) & 0xff);
 
-    if (fb->handle == 0) {
-        fprintf(stderr, "handle=0, need DRM master or use DRM_IOCTL_MODE_GETFB2\n");
+    if (fb->handles[0] == 0) {
+        fprintf(stderr, "handle=0, need DRM master\n");
         return 1;
     }
 
     struct drm_mode_map_dumb map = {};
-    map.handle = fb->handle;
+    map.handle = fb->handles[0];
     if (drmIoctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &map)) {
         perror("MAP_DUMB"); return 1;
     }
 
-    size_t size = fb->pitch * fb->height;
+    size_t size = fb->pitches[0] * fb->height;
     void *ptr = mmap(0, size, PROT_READ, MAP_SHARED, fd, map.offset);
     if (ptr == MAP_FAILED) { perror("mmap"); return 1; }
 
