@@ -10,7 +10,7 @@ echo "$FB_INFO"
 
 WIDTH=$(echo "$FB_INFO"  | awk '/^fb:/{split($2,a,"x"); print a[1]}')
 HEIGHT=$(echo "$FB_INFO" | awk '/^fb:/{split($2,a,"x"); print a[2]}')
-METHOD=$(echo "$FB_INFO" | grep -oP '(?<=path=)\S+')
+METHOD=$(echo "$FB_INFO" | grep -oP '(?<=method=)\S+')
 RAW_FMT=$(echo "$FB_INFO" | grep -oP '(?<=raw_fmt=)\S+')
 RAW_PITCH=$(echo "$FB_INFO" | grep -oP '(?<=raw_pitch=)\d+')
 
@@ -21,8 +21,8 @@ if [ "$METHOD" = "egl" ]; then
         -update 1 /tmp/scanout.png
 else
     # Linear path: use DRM fourcc to determine ffmpeg pixel format
-    FMT=$(echo "$FB_INFO" | grep -oP '(?<=fmt=)\S+')
-    PITCH=$(echo "$FB_INFO" | grep -oP '(?<=pitch=)\d+')
+    FMT=$(echo "$FB_INFO" | grep -oP '(?<=\bfmt=)\S+' | head -1)
+    PITCH=$(echo "$FB_INFO" | grep -oP '(?<!\w)pitch=\K\d+' | head -1)
 
     case "$FMT" in
         XR24|AR24) FFMT="bgra";      BPP=4 ;;

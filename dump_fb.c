@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <limits.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 #include <drm_fourcc.h>
@@ -80,7 +81,7 @@ static GLuint compile_shader(GLenum type, const char *src)
 
 typedef void (*PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)(GLenum, GLeglImageOES);
 
-static int dump_egl(int fd, drmModeFB2 *fb)
+static int dump_egl(int fd, drmModeFB2 *fb, int card_minor)
 {
     PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES =
         (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)
@@ -89,8 +90,30 @@ static int dump_egl(int fd, drmModeFB2 *fb)
         fprintf(stderr, "glEGLImageTargetTexture2DOES not available\n");
         return 1;
     }
-    int render_fd = open("/dev/dri/renderD128", O_RDWR);
-    if (render_fd < 0) { perror("open renderD128"); return 1; }
+    /* Find render node matching the card's parent device */
+    int render_fd = -1;
+    {
+        char card_sysfs[128], card_real[PATH_MAX] = {0};
+        snprintf(card_sysfs, sizeof(card_sysfs),
+                 "/sys/class/drm/card%d/device", card_minor);
+        if (realpath(card_sysfs, card_real)) {
+            for (int n = 128; n < 192 && render_fd < 0; n++) {
+                char rn_sysfs[128], rn_real[PATH_MAX] = {0};
+                snprintf(rn_sysfs, sizeof(rn_sysfs),
+                         "/sys/class/drm/renderD%d/device", n);
+                if (realpath(rn_sysfs, rn_real) &&
+                    strcmp(card_real, rn_real) == 0) {
+                    char rn_dev[64];
+                    snprintf(rn_dev, sizeof(rn_dev), "/dev/dri/renderD%d", n);
+                    render_fd = open(rn_dev, O_RDWR);
+                }
+            }
+        }
+        if (render_fd < 0) {
+            render_fd = open("/dev/dri/renderD128", O_RDWR);
+        }
+    }
+    if (render_fd < 0) { perror("open render node"); return 1; }
 
     struct gbm_device *gbm = gbm_create_device(render_fd);
     if (!gbm) { fprintf(stderr, "gbm_create_device failed\n"); return 1; }
@@ -255,13 +278,15 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    /* Extract card minor number from argv (e.g. "card2" → 2) */
+    int card_minor = -1;
+    sscanf(argv[1], "card%d", &card_minor);
+
     int ret;
-    if (fb->modifier == DRM_FORMAT_MOD_LINEAR || fb->modifier == DRM_FORMAT_MOD_INVALID) {
-        printf("path=linear (dumb buffer / FBC)\n");
+    ret = dump_egl(fd, fb, card_minor);
+    if (ret) {
+        fprintf(stderr, "EGL path failed, falling back to linear (MAP_DUMB)\n");
         ret = dump_linear(fd, fb);
-    } else {
-        printf("path=egl (CCS/tiled modifier)\n");
-        ret = dump_egl(fd, fb);
     }
 
     drmModeFreeFB2(fb);
